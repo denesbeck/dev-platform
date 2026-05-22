@@ -6,6 +6,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    talos = {
+      source  = "siderolabs/talos"
+      version = "~> 0.11"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.5"
+    }
   }
 }
 

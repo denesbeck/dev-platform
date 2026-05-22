@@ -17,3 +17,13 @@ output "worker_private_ips" {
   description = "Private IPs of the worker nodes"
   value       = aws_instance.worker[*].private_ip
 }
+
+output "talosconfig_path" {
+  description = "Path to the generated talosconfig file (write-only, 0600)"
+  value       = local_sensitive_file.talosconfig.filename
+}
+
+output "kubeconfig_path" {
+  description = "Path to the generated kubeconfig file (write-only, 0600)"
+  value       = local_sensitive_file.kubeconfig.filename
+}

@@ -1,5 +1,7 @@
 # Talos bootstrap runbook
 
+> **Preferred path: [talos-terraform.md](./talos-terraform.md).** The repo's `terraform/04-talos.tf` uses the `siderolabs/talos` Terraform provider to do all of this declaratively — one `terraform apply` covers infra, config apply, etcd bootstrap, and kubeconfig fetch. This manual runbook is kept as a fallback (e.g. if the provider can't be used, or you're debugging a state mismatch) and as the educational reference for what the provider does under the hood.
+
 End-to-end steps to bring a freshly-applied `terraform apply` from "three EC2 instances booted into Talos maintenance mode" to "a working Kubernetes cluster with a `kubeconfig` on your laptop."
 
 Assumes:
@@ -14,10 +16,10 @@ Assumes:
 
 ```sh
 # AWS SSO session not expired
-aws sts get-caller-identity --profile cloudgoat-lab
+aws sts get-caller-identity --profile <AWS profile>
 
 # Your current public IP matches operator_cidr in terraform.tfvars
-curl -s https://api.ipify.org; echo
+curl -s https://checkip.amazonaws.com/; echo
 grep operator_cidr terraform/terraform.tfvars
 
 # TCP reachability to the master's Talos API

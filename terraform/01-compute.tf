@@ -4,7 +4,7 @@ data "aws_ami" "talos" {
 
   filter {
     name   = "name"
-    values = ["talos-v*"]
+    values = ["talos-v1.12*"]
   }
 
   filter {
