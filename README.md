@@ -19,12 +19,12 @@ First hosted application: **Vaultwarden** (self-hosted password manager). Stack 
 
 ## Status
 
-Early stage. **VPC + compute scaffolding defined in Terraform; not yet applied.** Today:
+**One `terraform apply` from cold to a working `kubectl get nodes`.** Today:
 
 - [x] VPC, public subnet, IGW, route table, RT association
 - [x] Security group for cluster nodes (Talos API + kube-apiserver from operator CIDR; full intra-cluster; egress all)
-- [x] EC2 definitions — 1 on-demand master + 2 spot workers on a Talos AMI
-- [ ] Talos machine configs + cluster bootstrap
+- [x] EC2 definitions — 1 on-demand master + 2 spot workers on a Talos AMI (pinned to `talos-v1.12*`)
+- [x] Talos machine configs + cluster bootstrap, declarative via the `siderolabs/talos` provider
 - [ ] Argo CD seed + App-of-Apps root
 - [ ] Cluster foundation (Cilium, ingress-nginx, cert-manager, …)
 - [ ] Platform services (OneDev, observability, security)
@@ -36,9 +36,9 @@ Early stage. **VPC + compute scaffolding defined in Terraform; not yet applied.*
 
 - Terraform `>= 1.6`
 - AWS credentials with VPC + EC2 permissions
-- `talosctl`, `kubectl` (for the post-apply cluster bootstrap)
+- `talosctl`, `kubectl` (for using the cluster after Terraform brings it up)
 
-The Talos AMI is resolved automatically via a `data "aws_ami"` lookup for the latest Sidero Labs `talos-v*` release matching your region and `x86_64`.
+The Talos AMI is resolved automatically via a `data "aws_ami"` lookup for the latest Sidero Labs `talos-v1.12*` release matching your region and `x86_64`. Talos and Kubernetes versions are pinned together in `terraform/04-talos.tf` (`locals { talos_version, kubernetes_version }`); bump all three lines together when upgrading.
 
 ### Configure
 
@@ -59,30 +59,51 @@ terraform plan
 terraform apply
 ```
 
-Brings up the VPC and 3 EC2 instances. Talos boots in **maintenance mode** — machine config is applied separately via `talosctl` once the instances are reachable.
+One apply takes you from nothing to a working cluster: VPC + 3 EC2 instances + Talos machine configs applied + etcd bootstrapped + `kubeconfig` and `talosconfig` written to disk. Cold time ~8 minutes.
 
-Read the node IPs:
+### Use the cluster
+
+```sh
+export TALOSCONFIG="$(terraform output -raw talosconfig_path)"
+export KUBECONFIG="$(terraform output -raw kubeconfig_path)"
+
+kubectl get nodes
+# NAME             STATUS   ROLES           AGE   VERSION
+# ip-10-10-X-X     Ready    <none>          1m    v1.34.1
+# ip-10-10-X-X     Ready    control-plane   1m    v1.34.1
+# ip-10-10-X-X     Ready    <none>          1m    v1.34.1
+```
+
+Nodes are `Ready` immediately because Talos ships Flannel as the default CNI. Cilium replaces it in the next milestone.
+
+Read the node IPs separately if you need them:
 
 ```sh
 terraform output
 ```
 
-Master IP is stable (Elastic IP); worker IPs change on each start.
+Master public IP is stable (Elastic IP); worker public IPs change on each start.
+
+See [`docs/talos-terraform.md`](./docs/talos-terraform.md) for the full provider-driven workflow, day-2 operations, and tradeoffs. The manual `talosctl` runbook is preserved as a fallback in [`docs/talos-bootstrap.md`](./docs/talos-bootstrap.md).
 
 ## Repository layout
 
 ```text
 dev-platform/
 ├── README.md              # this file
-├── docs/                  # write-ups documenting design decisions
-├── terraform/             # AWS infra
-│   ├── providers.tf       # provider config + default tags
+├── docs/
+│   ├── talos-terraform.md   # preferred bootstrap path (the provider)
+│   ├── talos-bootstrap.md   # manual talosctl runbook (fallback / reference)
+│   └── aws-eip-hairpin.md   # technical explainer for the AWS NAT model and the endpoint/node split
+├── terraform/             # AWS infra + Talos provider
+│   ├── providers.tf       # AWS + siderolabs/talos + hashicorp/local
 │   ├── 00-network.tf      # VPC, subnet, IGW, route table
-│   ├── 01-compute.tf      # EC2 (master + workers)
+│   ├── 01-compute.tf      # EC2 (master + workers, AMI pinned to talos-v1.12*)
 │   ├── 02-security-groups.tf
 │   ├── 03-scheduler.tf    # nightly stop/start via EventBridge Scheduler
-│   └── outputs.tf         # node IPs surfaced via `terraform output`
-└── talos/                 # Talos machine configs (TBD)
+│   ├── 04-talos.tf        # Talos: secrets, machine configs, apply, bootstrap, kubeconfig
+│   └── outputs.tf         # node IPs + kubeconfig/talosconfig paths
+└── talos/                 # Terraform writes talosconfig here (gitignored)
 ```
 
 Planned: `argocd/` (App-of-Apps manifests), `policies/` (Kyverno), `.github/` (CI gates).
@@ -90,9 +111,9 @@ Planned: `argocd/` (App-of-Apps manifests), `policies/` (Kyverno), `.github/` (C
 ## Roadmap
 
 1. **Network + compute** — done
-2. **Talos bootstrap** — generate machine configs, apply, fetch kubeconfig
+2. **Talos bootstrap** — done (declarative, via `siderolabs/talos` provider)
 3. **GitOps seed** — install Argo CD via Terraform, point it at this repo
-4. **Cluster foundation** — Cilium, NGINX Ingress, cert-manager, external-dns, EBS CSI, AWS LB Controller
+4. **Cluster foundation** — Cilium (replacing default Flannel), NGINX Ingress, cert-manager, external-dns, EBS CSI, AWS LB Controller
 5. **Platform services** — OneDev, observability stack, security tooling
 6. **First app** — Vaultwarden, end-to-end TLS + DNS + storage + backup
 
@@ -104,7 +125,15 @@ Cluster runs on small EC2 instances — roughly $50/month if left running 24/7, 
 
 ## Documentation
 
-Each significant decision lands in `docs/`. Planned write-ups:
+Each significant decision lands in `docs/`.
+
+Already written:
+
+- [`talos-terraform.md`](./docs/talos-terraform.md) — preferred bootstrap path using the `siderolabs/talos` provider; includes day-2 ops and the destroy/recreate flow
+- [`talos-bootstrap.md`](./docs/talos-bootstrap.md) — manual `talosctl` runbook, kept as a fallback and as the educational reference for what the provider does under the hood
+- [`aws-eip-hairpin.md`](./docs/aws-eip-hairpin.md) — why EIPs are unreachable from inside the VPC, why `talosctl`'s endpoint/node split exists, and the reproducible diagnostic that confirms the failure mode
+
+Planned:
 
 - The design pivot from bare metal to AWS spot
 - NGINX Ingress vs AWS NLB (L4 vs L7)
