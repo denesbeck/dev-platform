@@ -40,6 +40,16 @@ data "talos_machine_configuration" "controlplane" {
             aws_instance.master.private_ip,
           ]
         }
+        # Disable Flannel (default) and kube-proxy — Cilium replaces both.
+        # Must be set before bootstrap; swapping CNI on a live cluster is unsafe.
+        network = {
+          cni = {
+            name = "none"
+          }
+        }
+        proxy = {
+          disabled = true
+        }
       }
     })
   ]
@@ -52,6 +62,21 @@ data "talos_machine_configuration" "worker" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   talos_version      = local.talos_version
   kubernetes_version = local.kubernetes_version
+
+  config_patches = [
+    yamlencode({
+      cluster = {
+        network = {
+          cni = {
+            name = "none"
+          }
+        }
+        proxy = {
+          disabled = true
+        }
+      }
+    })
+  ]
 }
 
 data "talos_client_configuration" "this" {
