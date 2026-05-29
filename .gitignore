@@ -24,6 +24,11 @@ talos/talosconfig
 kubeconfig
 *.kubeconfig
 
+# SOPS / age
+*.dec.yaml
+*.dec.yml
+keys.txt
+
 # OS
 .DS_Store
 Thumbs.db

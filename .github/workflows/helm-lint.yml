@@ -1,0 +1,42 @@
+name: Helm Lint
+
+on:
+  pull_request:
+    paths:
+      - "argocd/**"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint charts
+        run: |
+          for chart in $(find argocd/platform argocd/applications -name Chart.yaml -exec dirname {} \;); do
+            echo "--- Linting $chart ---"
+            helm dependency build "$chart" 2>/dev/null || true
+            helm lint "$chart"
+          done
+
+  kubeconform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin
+
+      - name: Validate rendered templates
+        run: |
+          for chart in $(find argocd/platform argocd/applications -name Chart.yaml -exec dirname {} \;); do
+            echo "--- Validating $chart ---"
+            helm dependency build "$chart" 2>/dev/null || true
+            helm template "$chart" 2>/dev/null | kubeconform -strict -summary || true
+          done

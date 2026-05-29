@@ -1,0 +1,41 @@
+name: Manifests
+
+on:
+  pull_request:
+    paths:
+      - "argocd/**"
+      - "policies/**"
+
+jobs:
+  kubeconform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin
+
+      - name: Validate raw manifests
+        run: |
+          find argocd/apps -name '*.yaml' -o -name '*.yml' \
+            | xargs --no-run-if-empty kubeconform -strict -summary
+
+  kyverno-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Kyverno CLI
+        run: |
+          curl -fsSL https://github.com/kyverno/kyverno/releases/latest/download/kyverno-cli_latest_linux_x86_64.tar.gz \
+            | tar xz -C /usr/local/bin kyverno
+
+      - name: Run policy tests
+        run: |
+          if compgen -G "policies/*test*" > /dev/null; then
+            kyverno test policies/
+          else
+            echo "No policy tests found — skipping"
+          fi
