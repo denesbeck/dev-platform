@@ -157,6 +157,45 @@ resource "talos_cluster_kubeconfig" "this" {
   node                 = aws_instance.master.private_ip
 }
 
+# Waits for kube-apiserver to start serving HTTPS via the EIP. The
+# talos_cluster_health gate above sets skip_kubernetes_checks=true (its k8s
+# probe targets the private cluster_endpoint, unreachable from a laptop), so
+# it returns OK while the apiserver static pod is still starting. Any
+# Terraform resource that connects through the kubernetes/helm providers
+# (Cilium, future Argo CD) must wait on this.
+#
+# 200 and 401 both count as "up": apiserver runs with --anonymous-auth=false,
+# so an unauthenticated /livez returns 401 — a valid TLS handshake against a
+# live API server, which is exactly what we need before clients connect.
+resource "null_resource" "wait_for_apiserver" {
+  depends_on = [
+    talos_cluster_kubeconfig.this,
+    data.talos_cluster_health.this,
+  ]
+
+  triggers = {
+    cluster_id = talos_machine_secrets.this.id
+    eip        = aws_eip.master.public_ip
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/sh", "-c"]
+    command     = <<-EOT
+      for i in $(seq 1 60); do
+        code=$(curl -ks -o /dev/null -w '%%{http_code}' --max-time 5 https://${aws_eip.master.public_ip}:6443/livez || echo 000)
+        if [ "$code" = "200" ] || [ "$code" = "401" ]; then
+          echo "kube-apiserver responding (HTTP $code) after $i attempts"
+          exit 0
+        fi
+        echo "attempt $i/60: kube-apiserver not ready (HTTP $code), retrying in 5s"
+        sleep 5
+      done
+      echo "timed out waiting for kube-apiserver at https://${aws_eip.master.public_ip}:6443" >&2
+      exit 1
+    EOT
+  }
+}
+
 resource "local_sensitive_file" "talosconfig" {
   content         = data.talos_client_configuration.this.talos_config
   filename        = "${path.module}/../talos/talosconfig"

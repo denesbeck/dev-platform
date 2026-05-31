@@ -21,11 +21,10 @@ resource "helm_release" "cilium" {
   namespace        = "kube-system"
   create_namespace = false
 
-  # Cluster must be healthy and kubeconfig written before Helm can connect.
-  depends_on = [
-    talos_cluster_kubeconfig.this,
-    data.talos_cluster_health.this,
-  ]
+  # wait_for_apiserver transitively depends on talos_cluster_kubeconfig +
+  # talos_cluster_health and additionally polls /livez through the EIP, so
+  # this single dependency is enough to guarantee the API is reachable.
+  depends_on = [null_resource.wait_for_apiserver]
 
   values = [
     yamlencode({
