@@ -9,13 +9,13 @@ AWS EC2 (1 × on-demand master + 2 × spot workers)
   └── Talos Linux
       └── Kubernetes
           ├── Cilium · NGINX Ingress · cert-manager · external-dns · EBS CSI
-          ├── Argo CD · OneDev · Coolify
+          ├── Argo CD · OneDev · Backstage
           ├── Prometheus · Grafana · Loki · Tempo · Alertmanager
           ├── Kyverno · Trivy · Falco · IRSA
           └── Velero → S3
 ```
 
-First hosted application: **Vaultwarden** (self-hosted password manager). Stack rationale and per-decision write-ups live in `docs/`.
+Stack rationale and per-decision write-ups live in `docs/`.
 
 ## Status
 
@@ -28,7 +28,7 @@ First hosted application: **Vaultwarden** (self-hosted password manager). Stack 
 - [x] Talos machine configs + cluster bootstrap, declarative via the `siderolabs/talos` provider
 - [x] **M0** — repo scaffold (`argocd/`, `policies/`, CI workflows), SOPS + age for committed secrets
 - [x] **M1** — Cilium 1.16.5 replaces Flannel; kube-proxy replaced by eBPF; Hubble + relay + UI enabled
-- [ ] **M2** — IRSA + AWS prereqs (OIDC, IAM roles for EBS CSI / LBC / Velero, VPC tags, Velero S3)
+- [x] **M2** — IRSA + AWS prereqs (self-hosted OIDC on S3, IAM roles for EBS CSI / LBC / Velero, VPC tags, Velero S3) — verified end-to-end (`scripts/verify-m2.sh`)
 - [ ] **M3** — Argo CD seed + App-of-Apps root
 - [ ] **M4** — Cluster foundation (ingress-nginx, cert-manager, external-dns, EBS CSI)
 - [ ] **M5** — Observability (Prometheus, Grafana, Loki, Tempo)
@@ -108,7 +108,12 @@ dev-platform/
 │   ├── 03-scheduler.tf    # nightly stop/start via EventBridge Scheduler
 │   ├── 04-talos.tf        # Talos: secrets, machine configs, apply, bootstrap, kubeconfig, wait_for_apiserver
 │   ├── 05-cilium.tf       # Cilium Helm release (kube-proxy replacement, Hubble UI)
+│   ├── 06-s3.tf           # S3 bucket hosting the self-hosted OIDC discovery docs (M2)
+│   ├── 07-irsa.tf         # OIDC provider + IAM roles for EBS CSI / LBC / Velero (M2)
+│   ├── 08-velero-bucket.tf # Velero backup bucket, versioned + lifecycle (M2)
 │   └── outputs.tf         # node IPs + kubeconfig/talosconfig paths
+├── scripts/
+│   └── verify-m2.sh       # end-to-end IRSA + AWS prereq verification
 ├── argocd/                # App-of-Apps tree (scaffolded; populated in M3+)
 │   ├── apps/              # root applications, sync-wave ordered
 │   ├── platform/          # cluster services
@@ -128,7 +133,7 @@ dev-platform/
 2. **Talos bootstrap** — done (declarative, via `siderolabs/talos` provider)
 3. **Repo scaffold + SOPS + CI** (M0) — done
 4. **Cilium CNI swap** (M1) — done (Cilium 1.16.5, kube-proxy replaced by eBPF, Hubble UI)
-5. **IRSA + AWS prereqs** (M2) — OIDC discovery on S3, IAM roles for EBS CSI / LBC / Velero, VPC tags, Velero S3 bucket
+5. **IRSA + AWS prereqs** (M2) — done (self-hosted OIDC discovery on S3, IAM roles for EBS CSI / LBC / Velero, VPC tags, Velero S3 bucket)
 6. **Argo CD seed + App-of-Apps** (M3) — Terraform installs Argo CD; Argo CD reconciles everything from here on
 7. **Cluster foundation** (M4) — ingress-nginx, cert-manager, external-dns, EBS CSI, AWS LB Controller
 8. **Observability** (M5) — Prometheus, Grafana, Loki, Tempo, Alertmanager
@@ -166,5 +171,4 @@ Planned:
 - IRSA in practice
 - App-of-Apps with Argo CD
 - Velero to S3 — disaster recovery drills
-- Vaultwarden, the full path
 - The "Terraform allow-all-egress trap"
