@@ -5,6 +5,8 @@ resource "aws_vpc" "main_vpc" {
 
   tags = {
     Name = "dev-platform"
+    # Marks VPC resources as owned by this cluster (AWS cloud-provider convention).
+    "kubernetes.io/cluster/dev-platform" = "owned"
   }
 }
 
@@ -16,6 +18,12 @@ resource "aws_subnet" "main_sn" {
 
   tags = {
     Name = "dev-platform-public-a"
+    # LB Controller subnet auto-discovery — WITHOUT these, Ingress/type=LoadBalancer
+    # can't place ALBs/NLBs and fails with "couldn't auto-discover subnets".
+    # role/elb=1 = internet-facing LBs go here. Docs:
+    # https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/deploy/subnet_discovery/
+    "kubernetes.io/cluster/dev-platform" = "owned"
+    "kubernetes.io/role/elb"             = "1"
   }
 }
 

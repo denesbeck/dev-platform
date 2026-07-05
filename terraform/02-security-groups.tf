@@ -44,3 +44,31 @@ resource "aws_vpc_security_group_egress_rule" "all" {
   ip_protocol       = "-1"
   description       = "All egress"
 }
+
+resource "aws_vpc_security_group_ingress_rule" "http" {
+  security_group_id = aws_security_group.cluster.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+  description       = "HTTP from internet"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "https" {
+  security_group_id = aws_security_group.cluster.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  description       = "HTTPS from internet"
+}
+
+# NodePort range reachable from inside the VPC so the LB can forward to node ports
+resource "aws_vpc_security_group_ingress_rule" "nodeports" {
+  security_group_id = aws_security_group.cluster.id
+  cidr_ipv4         = aws_vpc.main_vpc.cidr_block
+  ip_protocol       = "tcp"
+  from_port         = 30000
+  to_port           = 32767
+  description       = "Kubernetes NodePort range from VPC"
+}

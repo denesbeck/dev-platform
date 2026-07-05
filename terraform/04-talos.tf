@@ -39,6 +39,22 @@ data "talos_machine_configuration" "controlplane" {
             aws_eip.master.public_ip,
             aws_instance.master.private_ip,
           ]
+          # IRSA: make the cluster a usable OIDC provider for AWS STS.
+          # extraArgs is a map (key => value), and keys have NO leading "--".
+          extraArgs = {
+            # Stamps this URL as the `iss` claim in SA tokens and as `issuer`
+            # in the served discovery doc. Must equal local.oidc_issuer used by
+            # 06-s3.tf and the OIDC provider, byte for byte.
+            service-account-issuer = local.oidc_issuer
+            # Sets `jwks_uri` in the discovery doc to where 06-s3.tf uploads the
+            # keys (bucket key "openid/v1/jwks"). Explicit so we don't rely on
+            # the apiserver's <issuer>/openid/v1/jwks default.
+            service-account-jwks-uri = "${local.oidc_issuer}/openid/v1/jwks"
+            # api-audiences DEFAULTS to service-account-issuer once that is set,
+            # which would reject pod tokens requesting aud=sts.amazonaws.com.
+            # Include both: sts (for IRSA) and the issuer (for in-cluster tokens).
+            api-audiences = "sts.amazonaws.com,${local.oidc_issuer}"
+          }
         }
         # Disable Flannel (default) and kube-proxy — Cilium replaces both.
         # Must be set before bootstrap; swapping CNI on a live cluster is unsafe.

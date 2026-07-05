@@ -27,3 +27,33 @@ output "kubeconfig_path" {
   description = "Path to the generated kubeconfig file (write-only, 0600)"
   value       = local_sensitive_file.kubeconfig.filename
 }
+
+output "oidc_provider_arn" {
+  description = "ARN of the IAM OIDC provider fronting the cluster's service-account tokens"
+  value       = aws_iam_openid_connect_provider.irsa_oidc_provider.arn
+}
+
+output "ebs_csi_role_arn" {
+  description = "IRSA role ARN for the EBS CSI driver (annotate its ServiceAccount with eks.amazonaws.com/role-arn)"
+  value       = aws_iam_role.ebs_csi.arn
+}
+
+output "aws_lbc_role_arn" {
+  description = "IRSA role ARN for the AWS Load Balancer Controller"
+  value       = aws_iam_role.aws_lbc.arn
+}
+
+output "velero_role_arn" {
+  description = "IRSA role ARN for Velero"
+  value       = aws_iam_role.velero.arn
+}
+
+output "velero_bucket_name" {
+  description = "S3 bucket holding Velero backups"
+  value       = aws_s3_bucket.velero.bucket
+}
+
+output "vpc_id" {
+  description = "VPC id (needed by the AWS Load Balancer Controller Helm values)"
+  value       = aws_vpc.main_vpc.id
+}
