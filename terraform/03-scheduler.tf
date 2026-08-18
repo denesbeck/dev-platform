@@ -1,3 +1,9 @@
+# Nightly stop/start to cut compute cost. Both schedules are gated on
+# var.enable_scheduler: a cold `terraform apply` started shortly before 21:00
+# would otherwise have its nodes powered off mid-bootstrap (Talos :50000 and
+# kube-apiserver both go away, and the apply fails part-built). Set
+# enable_scheduler = false for a from-scratch build, then flip it back.
+
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
@@ -46,6 +52,8 @@ resource "aws_iam_role_policy" "scheduler_ec2" {
 }
 
 resource "aws_scheduler_schedule" "cluster_stop" {
+  count = var.enable_scheduler ? 1 : 0
+
   name        = "dev-platform-cluster-stop"
   description = "Stop the dev-platform cluster at 21:00 Europe/Berlin"
 
@@ -67,6 +75,8 @@ resource "aws_scheduler_schedule" "cluster_stop" {
 }
 
 resource "aws_scheduler_schedule" "cluster_start" {
+  count = var.enable_scheduler ? 1 : 0
+
   name        = "dev-platform-cluster-start"
   description = "Start the dev-platform cluster at 05:00 Europe/Berlin"
 

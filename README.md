@@ -23,13 +23,13 @@ Stack rationale and per-decision write-ups live in `docs/`.
 
 - [x] VPC, public subnet, IGW, route table, RT association
 - [x] Security group for cluster nodes (Talos API + kube-apiserver from operator CIDR; full intra-cluster; egress all)
-- [x] EC2 definitions — 1 on-demand master + 2 spot workers on a Talos AMI (pinned to `talos-v1.12*`)
+- [x] EC2 definitions — 1 on-demand master + 2 spot workers on a Talos AMI (resolved from `var.talos_version`)
 - [x] Clean `terraform destroy` — workers' spot requests cancelled before termination (no relaunch), and instances ordered after the route table so the IGW attaches before nodes and detaches without hanging
 - [x] Talos machine configs + cluster bootstrap, declarative via the `siderolabs/talos` provider
 - [x] **M0** — repo scaffold (`argocd/`, `policies/`, CI workflows), SOPS + age for committed secrets
 - [x] **M1** — Cilium 1.16.5 replaces Flannel; kube-proxy replaced by eBPF; Hubble + relay + UI enabled
 - [x] **M2** — IRSA + AWS prereqs (self-hosted OIDC on S3, IAM roles for EBS CSI / LBC / Velero, VPC tags, Velero S3) — verified end-to-end (`scripts/verify-m2.sh`)
-- [ ] **M3** — Argo CD seed + App-of-Apps root
+- [ ] **M3** — Argo CD seed + App-of-Apps root *(code in place and validated; not yet applied to the cluster)*
 - [ ] **M4** — Cluster foundation (ingress-nginx, cert-manager, external-dns, EBS CSI)
 - [ ] **M5** — Observability (Prometheus, Grafana, Loki, Tempo)
 - [ ] **M6** — Security (Kyverno, Trivy, Falco)
@@ -43,7 +43,7 @@ Stack rationale and per-decision write-ups live in `docs/`.
 - AWS credentials with VPC + EC2 permissions
 - `talosctl`, `kubectl` (for using the cluster after Terraform brings it up)
 
-The Talos AMI is resolved automatically via a `data "aws_ami"` lookup for the latest Sidero Labs `talos-v1.12*` release matching your region and `x86_64`. Talos and Kubernetes versions are pinned together in `terraform/04-talos.tf` (`locals { talos_version, kubernetes_version }`); bump all three lines together when upgrading.
+The Talos AMI is resolved automatically via a `data "aws_ami"` lookup for the latest Sidero Labs `talos-v<version>*` release matching your region and `x86_64`. Talos and Kubernetes versions come from `var.talos_version` and `var.kubernetes_version` in `terraform/variables.tf` — `talos_version` drives both the AMI filter and the machine config, so the image and the node config cannot drift apart. Give both as bare versions (`1.12`, not `v1.12`); the leading `v` is added at each use site and a validation block rejects it.
 
 ### Configure
 
@@ -51,7 +51,15 @@ Create `terraform/terraform.tfvars` (gitignored):
 
 ```hcl
 operator_cidr = "X.X.X.X/32"   # your laptop's public IP
+
+# M3+: the age private key whose public half is in .sops.yaml. Argo CD's
+# repo-server needs it to decrypt *.enc.yaml when rendering manifests.
+#   sops_age_key = "AGE-SECRET-KEY-1..."
+# Prefer keeping it out of the file entirely:
+#   export TF_VAR_sops_age_key="$(cat "$SOPS_AGE_KEY_FILE")"
 ```
+
+Terraform records variable values in `terraform.tfstate`, so the age key lands in the state file — which is why both `*.tfvars` and `*.tfstate` are gitignored.
 
 Region defaults to `eu-central-1` (`eu-central-1a` for the subnet). Edit `terraform/providers.tf` and `terraform/00-network.tf` if you're using a different region.
 
@@ -65,6 +73,14 @@ terraform apply
 ```
 
 One apply takes you from nothing to a working cluster: VPC + 3 EC2 instances + Talos machine configs applied + etcd bootstrapped + `kubeconfig` and `talosconfig` written to disk. Cold time ~8 minutes.
+
+**Starting a cold build in the evening?** The nightly stop fires at 21:00 Europe/Berlin and will power the nodes off mid-bootstrap, failing the apply part-built. Disable the schedules for the build and turn them back on afterwards:
+
+```sh
+terraform apply -var enable_scheduler=false
+# once the cluster is up and verified:
+terraform apply          # default enable_scheduler=true recreates the schedules
+```
 
 ### Use the cluster
 
@@ -91,6 +107,37 @@ Master public IP is stable (Elastic IP); worker public IPs change on each start.
 
 See [`docs/talos-terraform.md`](./docs/talos-terraform.md) for the full provider-driven workflow, day-2 operations, and tradeoffs. The manual `talosctl` runbook is preserved as a fallback in [`docs/talos-bootstrap.md`](./docs/talos-bootstrap.md).
 
+### Argo CD (M3)
+
+Terraform installs Argo CD and exactly one Argo CD object — the `root` Application. Everything after that is reconciled from `argocd/apps/` in this repo, so Terraform's involvement with the cluster ends here.
+
+```sh
+scripts/verify-m3.sh
+
+kubectl -n argocd port-forward svc/argocd-server 8080:80   # http://localhost:8080
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+The server runs with `server.insecure=true` and is reached over plain HTTP via port-forward; TLS moves to ingress-nginx in M4.
+
+Two apps ship in this milestone, both **adoptions** rather than fresh installs — their values are kept identical to the Terraform originals so the first sync changes nothing:
+
+| Wave | App | Adopts |
+|-----:|-----|--------|
+| -1 | `argocd` | the Helm release from `terraform/09-argocd.tf` |
+| 0 | `cilium` | the Helm release from `terraform/05-cilium.tf` (M1) |
+
+Once the `cilium` app reports `Synced`, hand ownership over for real:
+
+```sh
+cd terraform/ && terraform state rm helm_release.cilium
+```
+
+Otherwise Terraform and Argo CD both believe they own the CNI release, and the next `terraform apply` fights the reconciler.
+
+Later milestones add their own file to `argocd/apps/` at the wave the [implementation plan](#roadmap) assigns (ebs-csi/LBC at 1, ingress-nginx at 2, cert-manager/external-dns at 3, and so on).
+
 ## Repository layout
 
 ```text
@@ -105,18 +152,24 @@ dev-platform/
 │   ├── 00-network.tf      # VPC, subnet, IGW, route table
 │   ├── 01-compute.tf      # EC2 (master + workers) + cancel_worker_spot_request hook + IGW-ordering depends_on
 │   ├── 02-security-groups.tf
-│   ├── 03-scheduler.tf    # nightly stop/start via EventBridge Scheduler
+│   ├── 03-scheduler.tf    # nightly stop/start via EventBridge Scheduler (var.enable_scheduler)
 │   ├── 04-talos.tf        # Talos: secrets, machine configs, apply, bootstrap, kubeconfig, wait_for_apiserver
 │   ├── 05-cilium.tf       # Cilium Helm release (kube-proxy replacement, Hubble UI)
 │   ├── 06-s3.tf           # S3 bucket hosting the self-hosted OIDC discovery docs (M2)
 │   ├── 07-irsa.tf         # OIDC provider + IAM roles for EBS CSI / LBC / Velero (M2)
 │   ├── 08-velero-bucket.tf # Velero backup bucket, versioned + lifecycle (M2)
+│   ├── 09-argocd.tf       # Argo CD Helm seed + SOPS age key Secret (M3)
+│   ├── 10-argocd-root-app.tf # App-of-Apps root Application (M3)
+│   ├── charts/argocd-root-app/ # one-Application local chart used by the above
 │   └── outputs.tf         # node IPs + kubeconfig/talosconfig paths
 ├── scripts/
-│   └── verify-m2.sh       # end-to-end IRSA + AWS prereq verification
-├── argocd/                # App-of-Apps tree (scaffolded; populated in M3+)
-│   ├── apps/              # root applications, sync-wave ordered
-│   ├── platform/          # cluster services
+│   ├── verify-m2.sh       # end-to-end IRSA + AWS prereq verification
+│   └── verify-m3.sh       # Argo CD seed, root app, SOPS tooling, Cilium handover
+├── argocd/                # App-of-Apps tree (populated per milestone)
+│   ├── apps/              # child Applications, sync-wave ordered
+│   │   ├── argocd.yaml    # wave -1: Argo CD self-management
+│   │   └── cilium.yaml    # wave  0: handover of the Terraform-installed CNI
+│   ├── platform/          # cluster services (argocd/, cilium/ so far)
 │   └── applications/      # workloads
 ├── policies/              # Kyverno ClusterPolicies (M6)
 ├── .github/workflows/     # CI gates

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: cilium
+description: Cilium CNI, adopted from the Terraform-managed release. Keep in sync with terraform/05-cilium.tf.
+type: application
+version: 0.1.0
+dependencies:
+  - name: cilium
+    version: 1.16.5
+    repository: https://helm.cilium.io/

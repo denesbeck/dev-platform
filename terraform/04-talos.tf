@@ -9,8 +9,8 @@
 # Pinned to match the Talos AMI selected in 01-compute.tf (talos-v1.12*).
 # Bump both lines together when upgrading.
 locals {
-  talos_version      = "v1.12"
-  kubernetes_version = "v1.34.1"
+  talos_version      = "v${var.talos_version}"
+  kubernetes_version = "v${var.kubernetes_version}"
 }
 
 resource "talos_machine_secrets" "this" {

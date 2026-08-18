@@ -1,0 +1,9 @@
+apiVersion: v2
+name: argocd-root-app
+description: >-
+  App-of-Apps root Application, installed by Terraform as part of the M3 seed.
+  Wrapping the Application in a tiny local chart lets Terraform manage it with
+  helm_release instead of kubernetes_manifest, which would need the argoproj.io
+  CRDs to already exist at plan time.
+type: application
+version: 0.1.0

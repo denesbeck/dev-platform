@@ -1,0 +1,7 @@
+# All values are supplied by terraform/10-argocd-root-app.tf; the defaults here
+# exist so `helm lint` and `helm template` work standalone.
+name: root
+namespace: argocd
+repoURL: https://github.com/denesbeck/dev-platform.git
+targetRevision: main
+path: argocd/apps

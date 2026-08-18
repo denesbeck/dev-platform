@@ -17,10 +17,15 @@ jobs:
           curl -fsSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
             | tar xz -C /usr/local/bin
 
+      # argocd/apps holds argoproj.io Application CRs, which have no schema in
+      # the upstream Kubernetes JSON schema set. Point kubeconform at the
+      # CRDs-catalog so they are genuinely validated rather than skipped.
       - name: Validate raw manifests
         run: |
           find argocd/apps -name '*.yaml' -o -name '*.yml' \
-            | xargs --no-run-if-empty kubeconform -strict -summary
+            | xargs --no-run-if-empty kubeconform -strict -summary \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
   kyverno-test:
     runs-on: ubuntu-latest

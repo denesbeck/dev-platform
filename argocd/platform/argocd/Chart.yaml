@@ -1,0 +1,9 @@
+apiVersion: v2
+name: argocd
+description: Argo CD, self-managed. Keep the version in sync with terraform/09-argocd.tf.
+type: application
+version: 0.1.0
+dependencies:
+  - name: argo-cd
+    version: 10.3.3 # Argo CD v3.5.1
+    repository: https://argoproj.github.io/argo-helm

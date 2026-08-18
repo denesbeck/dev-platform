@@ -28,6 +28,12 @@ kubeconfig
 terraform/jwks.json
 terraform/openid-configuration.json
 
+# Helm dependencies vendored by `helm dependency build`. Chart.lock is committed
+# (it pins the digest); the tarballs are refetched by CI and by Argo CD's
+# repo-server, so they don't belong in Git.
+argocd/**/charts/*.tgz
+terraform/charts/**/charts/*.tgz
+
 # SOPS / age
 *.dec.yaml
 *.dec.yml

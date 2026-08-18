@@ -1,0 +1,107 @@
+# Mirror of the values in terraform/09-argocd.tf. Argo CD adopts the seeded
+# release on first sync; because these match, the adoption is a no-op.
+#
+# When changing Argo CD config, change it HERE — Terraform's copy only matters
+# for a cold bootstrap onto an empty cluster. Keep the two in sync anyway, or a
+# rebuild from scratch will drift on the very first sync.
+argo-cd:
+  crds:
+    install: true
+    keep: true
+
+  dex:
+    enabled: false
+  notifications:
+    enabled: false
+
+  # No applicationSet.enabled flag exists in this chart — the controller always
+  # installs, so cap its footprint rather than trying to disable it.
+  applicationSet:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        memory: 192Mi
+
+  configs:
+    params:
+      # TLS terminates at ingress-nginx from M4 onward.
+      server.insecure: true
+
+  controller:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+  server:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  redis:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+
+  repoServer:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+    # Puts the sops binary on repo-server's PATH. The age key comes from the
+    # argocd-sops-age-key Secret, which Terraform creates — it is a bootstrap
+    # dependency and deliberately not managed from Git.
+    initContainers:
+      - name: install-sops
+        image: alpine:3.22
+        command: [sh, -c]
+        args:
+          - >-
+            wget -qO /custom-tools/sops
+            https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
+            && chmod +x /custom-tools/sops
+        volumeMounts:
+          - name: custom-tools
+            mountPath: /custom-tools
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop: [ALL]
+
+    volumes:
+      - name: custom-tools
+        emptyDir: {}
+      - name: sops-age-key
+        secret:
+          secretName: argocd-sops-age-key
+          defaultMode: 292 # 0444
+
+    volumeMounts:
+      - name: custom-tools
+        mountPath: /usr/local/bin/sops
+        subPath: sops
+      - name: sops-age-key
+        mountPath: /home/argocd/.config/sops/age
+        readOnly: true
+
+    env:
+      - name: SOPS_AGE_KEY_FILE
+        value: /home/argocd/.config/sops/age/keys.txt

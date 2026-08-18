@@ -6,7 +6,7 @@ resource "aws_s3_bucket" "velero" {
   }
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false // TODO: change this to true when releasing to production
   }
 }
 
