@@ -72,7 +72,8 @@ else
   fail "root Application missing (did helm_release.argocd_root_app apply?)"
 fi
 
-for app in argocd cilium; do
+# Cilium is intentionally absent — Terraform owns the CNI (see section 6).
+for app in argocd; do
   sync=$(kubectl -n argocd get application "${app}" -o jsonpath='{.status.sync.status}' 2>/dev/null)
   health=$(kubectl -n argocd get application "${app}" -o jsonpath='{.status.health.status}' 2>/dev/null)
   if [ "${sync}" = "Synced" ] && [ "${health}" = "Healthy" ]; then
@@ -109,11 +110,16 @@ hdr "6. Cilium ownership"
 # Argo CD can run at all, so it cannot be handed over. Do NOT `state rm` it:
 # 05-cilium.tf still declares the resource, so the next apply would try to
 # create a release name that already exists and fail.
-if (cd "${REPO_ROOT}/terraform" && terraform state list 2>/dev/null | grep -qx 'helm_release.cilium'); then
-  pass "helm_release.cilium still owned by Terraform (expected)"
-else
-  fail "helm_release.cilium missing from Terraform state — next apply will fail trying to recreate it"
-fi
+# No pipe here on purpose: under `set -o pipefail`, `grep -q` exits on the first
+# match and SIGPIPEs `terraform state list`, so the pipeline reports failure even
+# when the grep succeeded. Capture first, match with `case`.
+tf_state="$(cd "${REPO_ROOT}/terraform" && terraform state list 2>/dev/null || true)"
+case "${tf_state}" in
+  *helm_release.cilium*)
+    pass "helm_release.cilium still owned by Terraform (expected)" ;;
+  *)
+    fail "helm_release.cilium missing from Terraform state — next apply will fail trying to recreate it" ;;
+esac
 
 if kubectl -n argocd get application cilium >/dev/null 2>&1; then
   fail "a cilium Argo CD Application still exists — Terraform and Argo CD would both own the CNI"

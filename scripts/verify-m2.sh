@@ -56,7 +56,10 @@ else
   fail "anonymous discovery doc unreadable or issuer mismatch (got '$DISC_ISS')"
 fi
 
-if curl -fsS "${ISSUER}/openid/v1/jwks" 2>/dev/null | grep -q '"keys"'; then
+# Captured rather than piped: under `set -o pipefail`, `grep -q` exits on match
+# and SIGPIPEs curl, so the pipeline can report failure even on success.
+jwks_body="$(curl -fsS "${ISSUER}/openid/v1/jwks" 2>/dev/null || true)"
+if [ "${jwks_body#*\"keys\"}" != "${jwks_body}" ]; then
   pass "GET ${ISSUER}/openid/v1/jwks  (contains keys)"
 else
   fail "anonymous JWKS unreadable or empty"
