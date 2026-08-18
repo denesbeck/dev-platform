@@ -29,7 +29,7 @@ Stack rationale and per-decision write-ups live in `docs/`.
 - [x] **M0** — repo scaffold (`argocd/`, `policies/`, CI workflows), SOPS + age for committed secrets
 - [x] **M1** — Cilium 1.16.5 replaces Flannel; kube-proxy replaced by eBPF; Hubble + relay + UI enabled
 - [x] **M2** — IRSA + AWS prereqs (self-hosted OIDC on S3, IAM roles for EBS CSI / LBC / Velero, VPC tags, Velero S3) — verified end-to-end (`scripts/verify-m2.sh`)
-- [ ] **M3** — Argo CD seed + App-of-Apps root *(code in place and validated; not yet applied to the cluster)*
+- [x] **M3** — Argo CD seed + App-of-Apps root — Argo CD 3.5.1 seeded by Terraform, root app reconciling from Git, SOPS decryption working in repo-server (`scripts/verify-m3.sh`)
 - [ ] **M4** — Cluster foundation (ingress-nginx, cert-manager, external-dns, EBS CSI)
 - [ ] **M5** — Observability (Prometheus, Grafana, Loki, Tempo)
 - [ ] **M6** — Security (Kyverno, Trivy, Falco)
@@ -121,20 +121,13 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
 
 The server runs with `server.insecure=true` and is reached over plain HTTP via port-forward; TLS moves to ingress-nginx in M4.
 
-Two apps ship in this milestone, both **adoptions** rather than fresh installs — their values are kept identical to the Terraform originals so the first sync changes nothing:
+One app ships in this milestone: `argocd`, which **adopts** the Helm release Terraform seeded rather than installing a second copy. Its values are kept identical to `terraform/09-argocd.tf`, so the first sync changes nothing (verified: 44/44 rendered resources match).
 
 | Wave | App | Adopts |
 |-----:|-----|--------|
 | -1 | `argocd` | the Helm release from `terraform/09-argocd.tf` |
-| 0 | `cilium` | the Helm release from `terraform/05-cilium.tf` (M1) |
 
-Once the `cilium` app reports `Synced`, hand ownership over for real:
-
-```sh
-cd terraform/ && terraform state rm helm_release.cilium
-```
-
-Otherwise Terraform and Argo CD both believe they own the CNI release, and the next `terraform apply` fights the reconciler.
+**Cilium is deliberately not managed by Argo CD.** A cold bootstrap has to install the CNI before Argo CD can schedule a single pod, so Terraform owns `helm_release.cilium` permanently (`terraform/05-cilium.tf`). Do **not** run `terraform state rm helm_release.cilium` — `05-cilium.tf` still declares the resource, so the next apply would try to create a Helm release name that already exists and fail. One owner, no handover.
 
 Later milestones add their own file to `argocd/apps/` at the wave the [implementation plan](#roadmap) assigns (ebs-csi/LBC at 1, ingress-nginx at 2, cert-manager/external-dns at 3, and so on).
 
@@ -167,9 +160,8 @@ dev-platform/
 │   └── verify-m3.sh       # Argo CD seed, root app, SOPS tooling, Cilium handover
 ├── argocd/                # App-of-Apps tree (populated per milestone)
 │   ├── apps/              # child Applications, sync-wave ordered
-│   │   ├── argocd.yaml    # wave -1: Argo CD self-management
-│   │   └── cilium.yaml    # wave  0: handover of the Terraform-installed CNI
-│   ├── platform/          # cluster services (argocd/, cilium/ so far)
+│   │   └── argocd.yaml    # wave -1: Argo CD self-management
+│   ├── platform/          # cluster services (argocd/ so far)
 │   └── applications/      # workloads
 ├── policies/              # Kyverno ClusterPolicies (M6)
 ├── .github/workflows/     # CI gates

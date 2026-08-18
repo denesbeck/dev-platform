@@ -7,9 +7,10 @@
 # the chart version here and in argocd/platform/argocd/Chart.yaml identical,
 # otherwise the first sync shows drift and Argo CD immediately upgrades itself.
 #
-# Footprint note: 3 x t3a.medium (4 GiB each) is not much, so dex, notifications
-# and applicationset are disabled and every component carries explicit requests
-# and limits. Re-enable applicationset when a milestone actually needs it.
+# Footprint note: 3 x t3a.medium (4 GiB each) is not much, so dex and
+# notifications are disabled and every component carries explicit requests and
+# limits. The ApplicationSet controller has no enable flag in this chart and is
+# always installed, so it is capped rather than switched off.
 
 locals {
   argocd_namespace     = "argocd"
@@ -61,6 +62,10 @@ resource "helm_release" "argocd" {
   depends_on = [
     null_resource.wait_for_apiserver,
     kubernetes_secret.sops_age_key,
+    # Without the CNI, Argo CD's pods sit in ContainerCreating with no IP and
+    # only recover once Cilium lands. wait=true would eventually absorb that,
+    # but it turns a 2m rollout into a race against the 900s timeout.
+    helm_release.cilium,
   ]
 
   values = [

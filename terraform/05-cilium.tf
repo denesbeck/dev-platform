@@ -10,8 +10,12 @@
 #   - ipam.mode = kubernetes: pod CIDRs come from the node spec, not Cilium
 #     cluster pool (simpler, matches what kube-controller-manager allocates)
 #
-# This resource gets adopted by Argo CD in M3. After adoption, run
-# `terraform state rm helm_release.cilium` so Terraform and Argo CD don't fight.
+# Terraform owns this release permanently and Argo CD does NOT manage the CNI.
+# A cold bootstrap must install Cilium before Argo CD can schedule any pod, so
+# the handover originally planned for M3 is a chicken-and-egg and was dropped.
+# Do not `terraform state rm helm_release.cilium`: this resource stays in the
+# config, so the next apply would try to create a release name that already
+# exists and fail with "cannot re-use a name that is still in use".
 
 resource "helm_release" "cilium" {
   name             = "cilium"

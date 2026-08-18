@@ -89,13 +89,13 @@ POD=$(kubectl -n argocd get pod -l app.kubernetes.io/name=argocd-repo-server \
 if [ -z "${POD}" ]; then
   fail "no repo-server pod found"
 else
-  if kubectl -n argocd exec "${POD}" -c argocd-repo-server -- sops --version >/dev/null 2>&1; then
-    pass "sops binary on PATH ($(kubectl -n argocd exec "${POD}" -c argocd-repo-server -- sops --version 2>/dev/null | head -1))"
+  if kubectl -n argocd exec "${POD}" -c repo-server -- sops --version >/dev/null 2>&1; then
+    pass "sops binary on PATH ($(kubectl -n argocd exec "${POD}" -c repo-server -- sops --version 2>/dev/null | head -1))"
   else
     fail "sops binary not runnable in repo-server"
   fi
 
-  if kubectl -n argocd exec "${POD}" -c argocd-repo-server -- \
+  if kubectl -n argocd exec "${POD}" -c repo-server -- \
        test -r /home/argocd/.config/sops/age/keys.txt >/dev/null 2>&1; then
     pass "age key readable at SOPS_AGE_KEY_FILE"
   else
@@ -104,12 +104,21 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-hdr "6. Cilium handover"
-# Argo CD should own Cilium now; Terraform should have been told to let go.
+hdr "6. Cilium ownership"
+# Terraform owns the CNI permanently — a cold bootstrap has to install it before
+# Argo CD can run at all, so it cannot be handed over. Do NOT `state rm` it:
+# 05-cilium.tf still declares the resource, so the next apply would try to
+# create a release name that already exists and fail.
 if (cd "${REPO_ROOT}/terraform" && terraform state list 2>/dev/null | grep -qx 'helm_release.cilium'); then
-  warn "helm_release.cilium still in Terraform state — run: terraform state rm helm_release.cilium"
+  pass "helm_release.cilium still owned by Terraform (expected)"
 else
-  pass "helm_release.cilium no longer in Terraform state"
+  fail "helm_release.cilium missing from Terraform state — next apply will fail trying to recreate it"
+fi
+
+if kubectl -n argocd get application cilium >/dev/null 2>&1; then
+  fail "a cilium Argo CD Application still exists — Terraform and Argo CD would both own the CNI"
+else
+  pass "no cilium Argo CD Application (single owner)"
 fi
 
 if kubectl -n kube-system get daemonset cilium >/dev/null 2>&1; then
