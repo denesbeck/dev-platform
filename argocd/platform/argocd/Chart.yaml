@@ -1,6 +1,6 @@
 apiVersion: v2
 name: argocd
-description: Argo CD, self-managed. Keep the version in sync with terraform/09-argocd.tf.
+description: Argo CD, self-managed. terraform/09-argocd.tf reads the dependency version below, so this is the only place it is declared.
 type: application
 version: 0.1.0
 dependencies:

@@ -121,11 +121,20 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
 
 The server runs with `server.insecure=true` and is reached over plain HTTP via port-forward; TLS moves to ingress-nginx in M4.
 
-One app ships in this milestone: `argocd`, which **adopts** the Helm release Terraform seeded rather than installing a second copy. Its values are kept identical to `terraform/09-argocd.tf`, so the first sync changes nothing (verified: 44/44 rendered resources match).
+One app ships in this milestone: `argocd`, which **adopts** the Helm release Terraform seeded rather than installing a second copy.
+
+Argo CD's configuration is declared once, in the chart it self-manages from:
+
+| File | Holds | Read by |
+|------|-------|---------|
+| `argocd/platform/argocd/values.yaml` | chart values | Argo CD (from Git) **and** `terraform/09-argocd.tf` (from disk) |
+| `argocd/platform/argocd/Chart.yaml` | chart version | same |
+
+Terraform's only transformation is stripping the `argo-cd:` subchart wrapper, so the seeded release and the adopted one match by construction — there is no second copy to keep in sync (verified: 44/44 rendered resources match).
 
 | Wave | App | Adopts |
 |-----:|-----|--------|
-| -1 | `argocd` | the Helm release from `terraform/09-argocd.tf` |
+| -1 | `argocd` | the Helm release seeded by `terraform/09-argocd.tf` |
 
 **Cilium is deliberately not managed by Argo CD.** A cold bootstrap has to install the CNI before Argo CD can schedule a single pod, so Terraform owns `helm_release.cilium` permanently (`terraform/05-cilium.tf`). Do **not** run `terraform state rm helm_release.cilium` — `05-cilium.tf` still declares the resource, so the next apply would try to create a Helm release name that already exists and fail. One owner, no handover.
 
@@ -151,7 +160,7 @@ dev-platform/
 │   ├── 06-s3.tf           # S3 bucket hosting the self-hosted OIDC discovery docs (M2)
 │   ├── 07-irsa.tf         # OIDC provider + IAM roles for EBS CSI / LBC / Velero (M2)
 │   ├── 08-velero-bucket.tf # Velero backup bucket, versioned + lifecycle (M2)
-│   ├── 09-argocd.tf       # Argo CD Helm seed + SOPS age key Secret (M3)
+│   ├── 09-argocd.tf       # Argo CD Helm seed + SOPS age key Secret (M3); values read from argocd/platform/argocd/
 │   ├── 10-argocd-root-app.tf # App-of-Apps root Application (M3)
 │   ├── charts/argocd-root-app/ # one-Application local chart used by the above
 │   └── outputs.tf         # node IPs + kubeconfig/talosconfig paths
@@ -162,6 +171,7 @@ dev-platform/
 │   ├── apps/              # child Applications, sync-wave ordered
 │   │   └── argocd.yaml    # wave -1: Argo CD self-management
 │   ├── platform/          # cluster services (argocd/ so far)
+│   │   └── argocd/        # single source of truth for Argo CD's chart + values
 │   └── applications/      # workloads
 ├── policies/              # Kyverno ClusterPolicies (M6)
 ├── .github/workflows/     # CI gates

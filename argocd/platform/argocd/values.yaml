@@ -1,9 +1,14 @@
-# Mirror of the values in terraform/09-argocd.tf. Argo CD adopts the seeded
-# release on first sync; because these match, the adoption is a no-op.
+# The single source of truth for Argo CD's configuration.
 #
-# When changing Argo CD config, change it HERE — Terraform's copy only matters
-# for a cold bootstrap onto an empty cluster. Keep the two in sync anyway, or a
-# rebuild from scratch will drift on the very first sync.
+# Two consumers read this exact file:
+#   - Argo CD, from Git, via argocd/apps/argocd.yaml (self-management)
+#   - Terraform, from disk, in terraform/09-argocd.tf (the cold-bootstrap seed)
+#
+# Terraform only strips the `argo-cd:` wrapper below (helm_release takes the
+# subchart's values un-nested) and passes the rest through untouched, so the
+# seeded release and the one Argo CD adopts are identical by construction.
+# There is nothing to keep in sync — change Argo CD's config here and nowhere
+# else. Same for the chart version, which lives in Chart.yaml.
 argo-cd:
   crds:
     install: true

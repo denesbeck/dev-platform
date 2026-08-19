@@ -2,9 +2,9 @@
 # Runs before everything else so that a self-upgrade never happens midway
 # through reconciling the rest of the platform.
 #
-# The chart version and values here must match terraform/09-argocd.tf. They
-# start identical, so the first sync is a no-op adoption; after that this file
-# is the source of truth and Terraform's copy is only used for cold bootstraps.
+# Chart version and values both come from argocd/platform/argocd/ — the same
+# files terraform/09-argocd.tf reads when it seeds the release — so the first
+# sync is a no-op adoption by construction, with nothing to keep in sync.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
