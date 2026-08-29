@@ -3,9 +3,11 @@ kind: Application
 metadata:
   name: {{ .Values.name }}
   namespace: {{ .Values.namespace }}
-  finalizers:
-    # Deleting the root app cascades to every child Application.
-    - resources-finalizer.argocd.argoproj.io
+  # No resources-finalizer here, deliberately. The cascade it triggers deletes
+  # the argocd child Application — i.e. Argo CD itself — so the controller dies
+  # mid-cascade and the remaining finalizers are never cleared, deadlocking
+  # `terraform destroy`. Deleting the root app therefore orphans its children
+  # instead of removing them; during teardown the nodes are going away anyway.
 spec:
   project: default
   source:

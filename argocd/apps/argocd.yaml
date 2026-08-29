@@ -12,8 +12,11 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  # No resources-finalizer, deliberately: this app manages Argo CD itself, so
+  # the cascade it triggers deletes the controller that has to clear it — a
+  # deadlock whether it fires via `terraform destroy` (namespace deletion
+  # hangs) or via pruning this app. selfHeal would restore a finalizer removed
+  # by hand, so Git is the only place this can be fixed.
 spec:
   project: default
   source:

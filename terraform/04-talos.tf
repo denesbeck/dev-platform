@@ -187,6 +187,14 @@ resource "null_resource" "wait_for_apiserver" {
   depends_on = [
     talos_cluster_kubeconfig.this,
     data.talos_cluster_health.this,
+    # The probe below (and every kubernetes/helm resource downstream of this
+    # one) reaches the cluster through these ingress rules. Declaring that here
+    # also fixes destroy ordering: destroy runs in reverse, so the rules stay
+    # open until everything cluster-side has been torn down — without this edge
+    # they get revoked in the first wave and helm uninstalls die with
+    # "cluster unreachable ... :6443: i/o timeout".
+    aws_vpc_security_group_ingress_rule.kube_api,
+    aws_vpc_security_group_ingress_rule.talos_api,
   ]
 
   triggers = {
