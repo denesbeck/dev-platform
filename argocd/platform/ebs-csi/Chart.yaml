@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ebs-csi
+description: AWS EBS CSI Driver
+type: application
+version: 0.1.0
+dependencies:
+  - name: aws-ebs-csi-driver
+    version: 2.66.0
+    repository: https://kubernetes-sigs.github.io/aws-ebs-csi-driver

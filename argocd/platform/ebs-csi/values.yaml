@@ -1,0 +1,42 @@
+aws-ebs-csi-driver:
+  controller:
+    serviceAccount:
+      annotations:
+        # Docs: https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/master/docs/install.md#iam-roles-for-serviceaccounts-ie-irsa
+        eks.amazonaws.com/role-arn: &ebsRoleArn arn:aws:iam::791209948343:role/dev-platform-ebs-csi
+    region: eu-central-1
+    # See EKS pod identity webhook docs: https://github.com/aws/amazon-eks-pod-identity-webhook/blob/master/README.md?plain=1#L93-L115
+    env:
+      - name: AWS_ROLE_ARN
+        value: *ebsRoleArn
+      - name: AWS_WEB_IDENTITY_TOKEN_FILE
+        value: "/var/run/secrets/eks.amazonaws.com/serviceaccount/token"
+    volumeMounts:
+      - mountPath: "/var/run/secrets/eks.amazonaws.com/serviceaccount/"
+        name: aws-token
+    volumes:
+      - name: aws-token
+        projected:
+          sources:
+            - serviceAccountToken:
+                audience: "sts.amazonaws.com"
+                expirationSeconds: 86400
+                path: token
+  # Argo CD never runs Helm tests.
+  helmTester:
+    enabled: false
+  storageClasses:
+    - name: ebs-sc
+      annotations:
+        storageclass.kubernetes.io/is-default-class: "true"
+      # With WaitForFirstConsumer binding mode, the disk is created only once the pod is scheduled.
+      # The other binding mode is Immediate. It creates the disk as soon as we create the PVC, before any pod exists. The driver has to pick an AZ without knowing where the pod will run.
+      # If we move to multi-AZ architecture, we have to make sure that the binding mode is WaitForFirstConsumer.
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true # Allow PVC to be resizable
+      reclaimPolicy: Delete # Change this to Retain in prod
+      parameters:
+        type: gp3
+        # Without kmsKeyId it uses the AWS-managed aws/ebs key.
+        # If we switch to our own KMS key, the IRSA role will need KMS permissions too.
+        encrypted: "true"
