@@ -1,4 +1,11 @@
 aws-ebs-csi-driver:
+  # The default value is -1, which is rendered as 10 if K8s version is 1.33+ which causes Out of sync in ArgoCD.
+  # Fix: use 0 as value.
+  # Root cause:
+  # - the field needs the MutableCSINodeAllocatableCount feature gate;
+  # - that gate is beta and off in 1.34 (checked: kubernetes_feature_enabled ... 0), so the apiserver drops the field, and Argo CD sees a permanent diff;
+  # - remove the setting if the gate is ever enabled, or once it becomes on by default in a later Kubernetes version.
+  nodeAllocatableUpdatePeriodSeconds: 0
   controller:
     serviceAccount:
       annotations:

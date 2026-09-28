@@ -37,6 +37,14 @@ resource "aws_instance" "master" {
     volume_type = "gp3"
   }
 
+  # Increasing hop limit for EBS CSI Driver: 
+  # https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/master/docs/install.md#imds-ec2-metadata
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required" # enforces IMDSv2 only
+    http_put_response_hop_limit = 3
+  }
+
   tags = {
     Name = "dev-platform-master"
     Role = "control-plane"
@@ -78,6 +86,14 @@ resource "aws_instance" "worker" {
   root_block_device {
     volume_size = 30
     volume_type = "gp3"
+  }
+
+  # Increasing hop limit for EBS CSI Driver: 
+  # https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/master/docs/install.md#imds-ec2-metadata
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required" # enforces IMDSv2 only
+    http_put_response_hop_limit = 3
   }
 
   tags = {
